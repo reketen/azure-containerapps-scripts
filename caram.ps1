@@ -1,6 +1,10 @@
-# Set your variables
-$ResourceGroup = "n8n"
-$ContainerAppsEnvironment = "cae-n8n-1"
+param(
+    [Parameter(Mandatory=$true, HelpMessage="Resource Group containing the Container App Environment")]
+    [string]$ResourceGroup,
+    
+    [Parameter(Mandatory=$true, HelpMessage="Name of the Container App Environment")]
+    [string]$ContainerAppsEnvironment
+)
 
 # Initialize total memory in GB
 $TotalMemoryGB = 0
@@ -8,7 +12,6 @@ $TotalMemoryGB = 0
 # List all container apps in the environment
 Write-Host "Fetching all container apps in $ContainerAppsEnvironment..."
 $ContainerApps = (az containerapp list `
-  --resource-group $ResourceGroup `
   --environment $ContainerAppsEnvironment `
   --query '[].name' -o tsv) | Out-String -Stream
 
@@ -45,8 +48,8 @@ foreach ($App in $ContainerApps) {
             # Extract memory reservation for this container
             $ContainerMemoryRaw = $Container.resources.memory
             
-            # Handle Gi notation (e.g., "1Gi", "2Gi")
-            if ($ContainerMemoryRaw -match "(\d+)Gi") {
+            # Handle Gi notation (e.g., "0.5Gi", "1.5Gi", "2Gi")
+            if ($ContainerMemoryRaw -match "(\d+\.?\d*)Gi") {
                 $ContainerMemory = [double]$Matches[1]
                 Write-Host "  Container $ContainerCount ($($Container.name)): ${ContainerMemory}GB (from ${ContainerMemoryRaw})"
             } else {
