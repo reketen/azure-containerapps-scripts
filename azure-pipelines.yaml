@@ -1,0 +1,89 @@
+trigger: none
+
+variables:
+  ResourceGroupName: 'your-resource-group'
+  ContainerAppsEnvironmentName: 'your-container-apps-env'
+
+schedules:
+  - cron: "0 21 * * 1-5"  # 9 P.M. Monday to Friday
+    displayName: Shutdown Schedule
+    branches:
+      include:
+        - main
+    always: true
+
+  - cron: "0 7 * * 1-5"   # 7 A.M. Monday to Friday
+    displayName: Startup Schedule
+    branches:
+      include:
+        - main
+    always: true
+
+jobs:
+  - job: shutdownJob
+    displayName: "Shutdown Azure Container Apps"
+    condition: and(
+      succeeded(),
+      eq(variables['Build.Reason'], 'Schedule'),
+      eq(variables['Build.CronSchedule.DisplayName'], 'Shutdown Schedule')
+    )
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+      - task: AzurePowerShell@5
+        inputs:
+          azureSubscription: '<Your-Service-Connection-Name>'
+          ScriptPath: './Stop-AzureContainerApps.ps1'
+          ScriptArguments: >
+            -ResourceGroupName "$(ResourceGroupName)"
+            -ContainerAppsEnvironmentName "$(ContainerAppsEnvironmentName)"
+          azurePowerShellVersion: 'LatestVersion'
+          pwsh: true
+
+      - task: CopyFiles@2
+        displayName: "Copy Shutdown Logs"
+        inputs:
+          SourceFolder: '$(System.DefaultWorkingDirectory)'
+          Contents: 'ContainerApps_Stop_*.log'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/ShutdownLogs'
+
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish Shutdown Logs"
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)/ShutdownLogs'
+          ArtifactName: 'ShutdownLogs'
+          publishLocation: 'Container'
+
+  - job: startupJob
+    displayName: "Start Azure Container Apps"
+    condition: and(
+      succeeded(),
+      eq(variables['Build.Reason'], 'Schedule'),
+      eq(variables['Build.CronSchedule.DisplayName'], 'Startup Schedule')
+    )
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+      - task: AzurePowerShell@5
+        inputs:
+          azureSubscription: '<Your-Service-Connection-Name>'
+          ScriptPath: './Start-AzureContainerApps.ps1'
+          ScriptArguments: >
+            -ResourceGroupName "$(ResourceGroupName)"
+            -ContainerAppsEnvironmentName "$(ContainerAppsEnvironmentName)"
+          azurePowerShellVersion: 'LatestVersion'
+          pwsh: true
+
+      - task: CopyFiles@2
+        displayName: "Copy Startup Logs"
+        inputs:
+          SourceFolder: '$(System.DefaultWorkingDirectory)'
+          Contents: 'ContainerApps_Start_*.log'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/StartupLogs'
+
+      - task: PublishBuildArtifacts@1
+        displayName: "Publish Startup Logs"
+        inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)/StartupLogs'
+          ArtifactName: 'StartupLogs'
+          publishLocation: 'Container'
