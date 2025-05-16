@@ -5,15 +5,17 @@
     This script retrieves all Container Apps in a specified Azure Container Apps Environment and stops them.
     It's designed to be used as part of a cost-saving automation to shut down Container Apps outside of business hours.
 .PARAMETER ResourceGroupName
-    The name of the resource group containing the Container Apps Environment.
+    The name of the resource group containing the Container Apps.
 .PARAMETER ContainerAppsEnvironmentName
     The name of the Container Apps Environment.
+.PARAMETER CAEResourceGroupName
+    The name of the resource group containing the Container Apps Environment.
 .EXAMPLE
-    .\Stop-AzureContainerApps.ps1 -ResourceGroupName "my-resource-group" -ContainerAppsEnvironmentName "my-container-apps-env"
+    .\Stop-AzureContainerApps.ps1 -ResourceGroupName "my-resource-group" -ContainerAppsEnvironmentName "my-container-apps-env" -CAEResourceGroupName "my-container-apps-env-rg"
 .NOTES
     Requires the Az.App PowerShell module.
     Author: Oleksii Reketenets
-    Date: May 9, 2025
+    Date: May 16, 2025
 #>
 
 [CmdletBinding()]
@@ -22,7 +24,10 @@ param(
     [string]$ResourceGroupName,
     
     [Parameter(Mandatory = $true)]
-    [string]$ContainerAppsEnvironmentName
+    [string]$ContainerAppsEnvironmentName,
+
+     [Parameter(Mandatory = $true)]
+    [string]$CAEResourceGroupName
 )
 
 # Function to check and install required modules
@@ -139,4 +144,53 @@ if ($failCount -gt 0) {
 else {
     Write-Output "All Container Apps successfully stopped. Details in log file: $logFile"
     exit 0
+}
+
+# Check the Container Apps Environment status and fix if needed
+try {
+    Write-Output "Checking status of Container Apps Environment '$ContainerAppsEnvironmentName' in resource group '$CAEResourceGroupName'..."
+    "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Checking status of Container Apps Environment '$ContainerAppsEnvironmentName'" | Out-File -FilePath $logFile -Append
+    
+    $environment = Get-AzContainerAppManagedEnv -ResourceGroupName $CAEResourceGroupName -Name $ContainerAppsEnvironmentName -ErrorAction Stop
+    
+    Write-Output "Container Apps Environment status: $($environment.ProvisioningState)"
+    "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Container Apps Environment status: $($environment.ProvisioningState)" | Out-File -FilePath $logFile -Append
+    
+    # If the environment is in FAILED state, fix it by adding a tag
+    if ($environment.ProvisioningState -eq "Failed") {
+        $currentDate = Get-Date -Format "yyyyMMdd"
+        $tagName = "Shutdown$currentDate"
+        $tagValue = Get-Date -Format "yyyy-MM-dd"
+        
+        Write-Output "Container Apps Environment is in FAILED state. Applying fix by adding tag: $tagName = $tagValue"
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Container Apps Environment is in FAILED state. Applying fix by adding tag: $tagName = $tagValue" | Out-File -FilePath $logFile -Append
+        
+        # Create tag hashtable
+        $tagHash = @{$tagName = $tagValue}
+        
+        # Preserve existing tags if any
+        if ($environment.Tag) {
+            foreach ($key in $environment.Tag.Keys) {
+                if ($key -ne $tagName) {  # Don't duplicate our new tag
+                    $tagHash[$key] = $environment.Tag[$key]
+                }
+            }
+        }
+        
+        # Apply the tag to fix the environment
+        Update-AzContainerAppManagedEnv -ResourceGroupName $CAEResourceGroupName -Name $ContainerAppsEnvironmentName -Tag $tagHash -ErrorAction Stop
+        
+        Write-Output "Fix applied successfully."
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Fix applied successfully." | Out-File -FilePath $logFile -Append
+        
+        # Verify the environment status after fix
+        $environment = Get-AzContainerAppManagedEnv -ResourceGroupName $CAEResourceGroupName -Name $ContainerAppsEnvironmentName -ErrorAction Stop
+        Write-Output "Container Apps Environment status after fix: $($environment.ProvisioningState)"
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') - Container Apps Environment status after fix: $($environment.ProvisioningState)" | Out-File -FilePath $logFile -Append
+    }
+}
+catch {
+    $errorMessage = "Error checking or fixing Container Apps Environment: $_"
+    Write-Error $errorMessage
+    $errorMessage | Out-File -FilePath $logFile -Append
 }

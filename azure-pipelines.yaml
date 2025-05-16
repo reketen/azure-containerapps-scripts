@@ -3,6 +3,7 @@ trigger: none
 variables:
   ResourceGroupName: 'your-resource-group'
   ContainerAppsEnvironmentName: 'your-container-apps-env'
+  CAEResourceGroupName: 'cae-rg'
 
 schedules:
   - cron: "0 21 * * 1-5"  # 9 P.M. Monday to Friday
@@ -37,6 +38,7 @@ jobs:
           ScriptArguments: >
             -ResourceGroupName "$(ResourceGroupName)"
             -ContainerAppsEnvironmentName "$(ContainerAppsEnvironmentName)"
+            -CAEResourceGroupName "$(CAEResourceGroupName)"
           azurePowerShellVersion: 'LatestVersion'
           pwsh: true
 
